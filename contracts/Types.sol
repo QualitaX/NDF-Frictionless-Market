@@ -1,12 +1,12 @@
-
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.19;
 
-
 abstract contract Types {
     struct IRS {
-        address fixedRatePayer;
-        address floatingRatePayer;
+        address partyA;
+        address partyB;
+        address partyACollateralCurrency;
+        address partyBCollateralCurrency;
         address settlementCurrency;
         int256 swapRate;
         int256 spread;

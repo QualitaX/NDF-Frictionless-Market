@@ -18,7 +18,7 @@ contract NDF is IERC6123, NDFStorage, SwapToken {
 
         if(_withParty == address(0)) revert InvalidPartyAddress(_withParty);
         if(inceptor == _withParty) revert cannotInceptWithYourself(inceptor, _withParty);
-        if(_withParty != irs.partyB || inceptor != irs.partyA) revert InvalidPartyAddress(_withParty);
+        if(_withParty != irs.partyA || inceptor != irs.partyB) revert InvalidPartyAddress(_withParty);
         if(_position != 1 || _position != -1) revert InvalidPosition(_position);
         if(_position == 1) require(inceptor == irs.partyA, "NDF: Inceptor must be party A");
         if(_position == -1) require(inceptor == irs.partyB, "NDF: Inceptor must be party B");
@@ -118,8 +118,25 @@ contract NDF is IERC6123, NDFStorage, SwapToken {
         int _position,
         int256 _paymentAmount,
         string memory _initialSettlementData
-    ) external {
+    ) external override onlyWhenTradeIncepted onlyBeforeMaturity {
+        address inceptor = msg.sender;
 
+        uint256 dataHash = uint256(keccak256(
+            abi.encodePacked(
+                inceptor,
+                _withParty,
+                _tradeData,
+                _position,
+                _paymentAmount,
+                _initialSettlementData
+            )
+        ));
+        if (pendingRequests[dataHash] != inceptor) revert InvalidInceptorOrTradeData(inceptor, dataHash);
+
+        delete pendingRequests[dataHash];
+        tradeState = Types.TradeState.Inactive;
+
+        emit TradeCancelled(inceptor, tradeId);
     }
 
     function initiateSettlement() external {

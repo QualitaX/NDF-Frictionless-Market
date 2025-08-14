@@ -39,16 +39,16 @@ contract NDF is IERC6123, NDFStorage, SwapToken {
         tradeDataHash = Strings.toString(dataHash);
         inceptionTime = block.timestamp;
 
-        uint256 decimal = IToken(irs.settlementCurrency).decimals();
+        uint256 scale = _getPaymentTokenDecimalScale();
         marginRequirements[inceptor] = Types.MarginRequirement({
-            marginBuffer: initialMargin * (10 ** decimal),
-            terminationFee: terminationFee * (10 ** decimal)
+            marginBuffer: initialMargin * scale,
+            terminationFee: terminationFee * scale
         });
 
         // Deposit the initial margin and termination fees
-        uint256 marginAndFee = (initialMargin + terminationFee) * 10 ** decimal;
-        uint256 upfrontPayment = uint256(_paymentAmount);
-        upfrontPayment = upfrontPayment * (10 ** decimal);
+        uint256 marginAndFee = (initialMargin + terminationFee) * scale;
+        uint256 upfrontPayment = uint256(_paymentAmount); 
+        upfrontPayment = upfrontPayment * scale;
         if (upfrontPayment != marginAndFee) revert InvalidUpfrontPayment(upfrontPayment, marginAndFee);
 
         require(
@@ -73,8 +73,43 @@ contract NDF is IERC6123, NDFStorage, SwapToken {
         int _position,
         int256 _paymentAmount,
         string memory _initialSettlementData
-    ) external {
+    ) external override onlyWhenTradeIncepted onlyWithinConfirmationTime {
+        address inceptionParty = otherParty();
 
+        uint256 dataHash = uint256(keccak256(
+            abi.encodePacked(
+                _withParty,
+                msg.sender,
+                _tradeData,
+                -_position,
+                -_paymentAmount,
+                _initialSettlementData
+            )
+        ));
+        if (pendingRequests[dataHash] != inceptionParty)
+            revert InvalidInceptorOrTradeData(inceptionParty, dataHash);
+
+        delete pendingRequests[dataHash];
+        tradeState = Types.TradeState.Confirmed;
+
+        uint256 scale = _getPaymentTokenDecimalScale();
+        marginRequirements[msg.sender] = Types.MarginRequirement({
+            marginBuffer: initialMargin * scale,
+            terminationFee: terminationFee * scale
+        });
+
+        // Deposit the initial margin and termination fees
+        uint256 marginAndFee = (initialMargin + terminationFee) * scale;
+        uint256 upfrontPayment = uint256(_paymentAmount); 
+        upfrontPayment = upfrontPayment * scale;
+        if (upfrontPayment != marginAndFee) revert InvalidUpfrontPayment(upfrontPayment, marginAndFee);
+
+        require(
+            IToken(irs.settlementCurrency).transferFrom(msg.sender, treasury, marginAndFee),
+            "NDF: Transfer of margin and fees failed"
+        );
+
+        emit TradeConfirmed(msg.sender, tradeId);
     }
 
     function cancelTrade(
@@ -171,5 +206,23 @@ contract NDF is IERC6123, NDFStorage, SwapToken {
 
     function getTradeDataHash() external view returns (string memory) {
         return tradeDataHash;
+    }
+
+    function otherParty() internal view returns(address) {
+        return msg.sender == irs.fixedRatePayer ? irs.floatingRatePayer : irs.fixedRatePayer;
+    }
+
+    function otherParty(address _account) internal view returns(address) {
+        return _account == irs.fixedRatePayer ? irs.floatingRatePayer : irs.fixedRatePayer;
+    }
+
+    /**
+    * @dev Returns the decimal scale for the settlement currency.
+    * This is used to ensure that all amounts are correctly scaled
+    * according to the token's decimal places.
+    */
+    function _getPaymentTokenDecimalScale() private view returns (uint256) {
+        uint256 decimal = IToken(irs.settlementCurrency).decimals();
+        return 10 ** decimal;
     }
 }

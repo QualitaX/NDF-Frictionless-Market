@@ -14,6 +14,7 @@ abstract contract NDFStorage {
     error InvalidPartyAddress(address party);
     error cannotInceptWithYourself(address _caller, address _withParty);
     error InvalidUpfrontPayment(uint256 paymentAmount, uint256 requiredAmount);
+    error InvalidIceptorOrTradeData(address _inceptor, uint256 _dataHash);
 
     uint256 internal initialMargin;
     uint256 internal maintenanceMargin;

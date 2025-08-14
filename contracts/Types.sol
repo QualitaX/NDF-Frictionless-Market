@@ -8,10 +8,9 @@ abstract contract Types {
         address partyACollateralCurrency;
         address partyBCollateralCurrency;
         address settlementCurrency;
-        int256 swapRate;
         int256 spread;
         uint256 notionalAmount;
-        uint256 startingDate;
+        uint256 startDate;
         uint256 maturityDate;
     }
 
@@ -25,7 +24,20 @@ abstract contract Types {
         address to;
         uint256 netAmount;
         uint256 timestamp;
-        uint256 fixedRatePayment;
-        uint256 floatingRatePayment;
+        uint256 conversionRate;
+        uint256 partyAPaymentAmount;
+        uint256 partyBPaymentAmount;
+    }
+
+    enum TradeState {
+        Inactive,
+        Incepted,
+        Confirmed,
+        Valuation,
+        InTransfer,
+        Settled,
+        InTermination,
+        Terminated,
+        Matured
     }
 }

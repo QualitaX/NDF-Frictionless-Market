@@ -1,24 +1,104 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.19;
 
-//import "../interfaces/IERC20.sol";
-import "../Compliance/interfaces/IToken.sol";
+import "./TREX/interfaces/IToken.sol";
 import "../Types.sol";
 
 /**
 * @notice This token contract allows tokenize Interest Rate Swap cashflows.
 *         Approval and Transfer of tokens are allowed only before the IRS contract reaches maturity.
 *         This feature prevents tokens to be traded after the contract has matured.
-*         When tokens are transferred to an account, the ownership (fixedRatePayer or floatingRatePayer) is also transferred.
+*         When tokens are transferred to an account, the ownership (partyA or partyB) is also transferred.
 *         The contract doesn't support partial transfer of tokens. All the balance must be transferred for the transaction to be successful.
 */
-abstract contract IRSToken is IToken {
+abstract contract SwapToken is IToken {
     Types.IRS internal irs;
 
     modifier onlyBeforeMaturity() {
         require(
             block.timestamp <= irs.maturityDate,
             "IRS contract has reached the Maturity Date"
+        );
+        _;
+    }
+
+    modifier onlyWhenTradeInactive() {
+        require(
+            tradeState == TradeState.Inactive,
+            "Trade state is not 'Inactive'."
+        ); 
+        _;
+    }
+
+    modifier onlyWhenTradeIncepted() {
+        require(
+            tradeState == TradeState.Incepted,
+            "Trade state is not 'Incepted'."
+        );
+        _;
+    }
+
+    modifier onlyWhenTradeConfirmed() {
+        require(
+            tradeState == TradeState.Confirmed,
+            "Trade state is not 'Confirmed'." 
+        );
+        _;
+    }
+
+    modifier onlyWhenSettled() {
+        require(
+            tradeState == TradeState.Settled,
+            "Trade state is not 'Settled'."
+        );
+        _;
+    }
+
+    modifier onlyWhenValuation() {
+        require(
+            tradeState == TradeState.Valuation,
+            "Trade state is not 'Valuation'."
+        );
+        _;
+    }
+
+    modifier onlyWhenInTermination () {
+        require(
+            tradeState == TradeState.InTermination,
+            "Trade state is not 'InTermination'."
+        );
+        _;
+    }
+
+    modifier onlyWhenInTransfer() {
+        require(
+            tradeState == TradeState.InTransfer,
+            "Trade state is not 'InTransfer'."
+        );
+        _;
+    }
+
+    modifier onlyWhenMatured() {
+        require(
+            tradeState == TradeState.Matured,
+            "Trade state is not 'Matured'."
+        );
+        _;
+    }
+
+    modifier onlyWhenConfirmedOrSettled() {
+        if(tradeState != TradeState.Confirmed) {
+            if(tradeState != TradeState.Settled) {
+                revert stateMustBeConfirmedOrSettled();
+            }
+        }
+        _;
+    }
+
+    modifier onlyWithinConfirmationTime() {
+        require(
+            block.timestamp - inceptingTime <= confirmationTime,
+            "Confimartion time is over"
         );
         _;
     }
@@ -100,7 +180,7 @@ abstract contract IRSToken is IToken {
     function decreaseAllowance(address spender, uint256 subtractedValue) public virtual returns (bool) {
         address owner = msg.sender;
         uint256 currentAllowance = allowance(owner, spender);
-        require(currentAllowance >= subtractedValue, "ERC20: decreased allowance below zero");
+        require(currentAllowance >= subtractedValue, "SwapToken: decreased allowance below zero");
         unchecked {
             _approve(owner, spender, currentAllowance - subtractedValue);
         }
@@ -113,22 +193,22 @@ abstract contract IRSToken is IToken {
         address to,
         uint256 amount
     ) internal virtual onlyBeforeMaturity {
-        require(from != address(0), "ERC20: transfer from the zero address");
-        require(to != address(0), "ERC20: transfer to the zero address");
+        require(from != address(0), "SwapToken: transfer from the zero address");
+        require(to != address(0), "SwapToken: transfer to the zero address");
 
         _beforeTokenTransfer(from, to, amount);
 
         uint256 fromBalance = _balances[from];
-        require(fromBalance == amount, "ERC20: you must transfer all your balance");
+        require(fromBalance == amount, "SwapToken: you must transfer all your balance");
         unchecked {
             _balances[from] = fromBalance - amount;
             _balances[to] += amount;
         }
 
-        if(from == irs.fixedRatePayer) {
-            irs.fixedRatePayer = to;
-        } else if(from == irs.floatingRatePayer) {
-            irs.floatingRatePayer = to;
+        if(from == irs.partyA) {
+            irs.partyA = to;
+        } else if(from == irs.partyB) {
+            irs.partyB = to;
         } else {
             revert("invalid from address");
         }
@@ -139,7 +219,7 @@ abstract contract IRSToken is IToken {
     }
 
     function mint(address account, uint256 amount) public virtual override {
-        require(account != address(0), "ERC20: mint to the zero address");
+        require(account != address(0), "SwapToken: mint to the zero address");
 
         _beforeTokenTransfer(address(0), account, amount);
 
@@ -155,12 +235,12 @@ abstract contract IRSToken is IToken {
     }
 
     function burn(address account, uint256 amount) public virtual {
-        require(account != address(0), "ERC20: burn from the zero address");
+        require(account != address(0), "SwapToken: burn from the zero address");
 
         _beforeTokenTransfer(account, address(0), amount);
 
         uint256 accountBalance = _balances[account];
-        require(accountBalance >= amount, "ERC20: burn amount exceeds balance");
+        require(accountBalance >= amount, "SwapToken: burn amount exceeds balance");
         unchecked {
             _balances[account] = accountBalance - amount;
             _totalSupply -= amount;
@@ -177,8 +257,8 @@ abstract contract IRSToken is IToken {
         address spender,
         uint256 amount
     ) internal virtual onlyBeforeMaturity {
-        require(owner != address(0), "ERC20: approve from the zero address");
-        require(spender != address(0), "ERC20: approve to the zero address");
+        require(owner != address(0), "SwapToken: approve from the zero address");
+        require(spender != address(0), "SwapToken: approve to the zero address");
 
         _allowances[owner][spender] = amount;
         emit Approval(owner, spender, amount);
@@ -191,7 +271,7 @@ abstract contract IRSToken is IToken {
     ) internal virtual {
         uint256 currentAllowance = allowance(owner, spender);
         if (currentAllowance != type(uint256).max) {
-            require(currentAllowance >= amount, "ERC20: insufficient allowance");
+            require(currentAllowance >= amount, "SwapToken: insufficient allowance");
             unchecked {
                 _approve(owner, spender, currentAllowance - amount);
             }

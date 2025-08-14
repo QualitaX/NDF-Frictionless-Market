@@ -1,35 +1,88 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.19;
 
+import "@openzeppelin/contracts/utils/Strings.sol";
 import "./interfaces/IERC6123.sol";
 import "./assets/SwapToken.sol";
 import "./NDFStorage.sol";
 
 contract NDF is IERC6123, NDFStorage, SwapToken {
     function inceptTrade(
-        address withParty,
-        string memory tradeData,
-        int position,
-        int256 paymentAmount,
-        string memory initialSettlementData
-    ) external returns (string memory) {
-        
+        address _withParty,
+        string memory _tradeData,
+        int _position,
+        int256 _paymentAmount,
+        string memory _initialSettlementData
+    ) external override onlyCounterparty onlyWhenTradeIncepted onlyBeforeMaturity returns (string memory) {
+        address inceptor = msg.sender;
+
+        if(_withParty == address(0)) revert InvalidPartyAddress(_withParty);
+        if(inceptor == _withParty) revert cannotInceptWithYourself(inceptor, _withParty);
+        if(_withParty != irs.partyB || inceptor != irs.partyA) revert InvalidPartyAddress(_withParty);
+        if(_position != 1 || _position != -1) revert InvalidPosition(_position);
+        if(_position == 1) require(inceptor == irs.partyA, "NDF: Inceptor must be party A");
+        if(_position == -1) require(inceptor == irs.partyB, "NDF: Inceptor must be party B");
+
+        tradeState = Types.TradeState.Incepted;
+
+        uint256 dataHash = uint256(keccak256(
+            abi.encodePacked(
+                inceptor,
+                _withParty,
+                _tradeData,
+                _position,
+                _paymentAmount,
+                _initialSettlementData
+            )
+        ));
+        pendingRequests[dataHash] = inceptor;
+        tradeDataHash = Strings.toString(dataHash);
+        inceptionTime = block.timestamp;
+
+        uint256 decimal = IToken(irs.settlementCurrency).decimals();
+        marginRequirements[inceptor] = Types.MarginRequirement({
+            marginBuffer: initialMargin * (10 ** decimal),
+            terminationFee: terminationFee * (10 ** decimal)
+        });
+
+        // Deposit the initial margin and termination fees
+        uint256 marginAndFee = (initialMargin + terminationFee) * 10 ** decimal;
+        uint256 upfrontPayment = uint256(_paymentAmount);
+        upfrontPayment = upfrontPayment * (10 ** decimal);
+        if (upfrontPayment != marginAndFee) revert InvalidUpfrontPayment(upfrontPayment, marginAndFee);
+
+        require(
+            IToken(irs.settlementCurrency).transferFrom(inceptor, treasury, upfrontPayment),
+            "NDF: Transfer of margin and fees failed"
+        );
+
+        emit TradeIncepted(
+            inceptor,
+            _withParty,
+            tradeId,
+            tradeDataHash,
+            _position,
+            _paymentAmount,
+            _initialSettlementData
+        );
     }
 
     function confirmTrade(
-        address withParty,
-        string memory tradeData,
-        int position,
-        int256 paymentAmount,
-        string memory initialSettlementData
+        address _withParty,
+        string memory _tradeData,
+        int _position,
+        int256 _paymentAmount,
+        string memory _initialSettlementData
     ) external {
 
     }
 
     function cancelTrade(
-        address withParty, 
-        string memory tradeData, 
-        int position, int256 paymentAmount, string memory initialSettlementData
+        address _withParty, 
+        string memory _tradeData, 
+        int _position,
+        int256 _paymentAmount,
+        string memory _initialSettlementData
     ) external {
 
     }
@@ -38,23 +91,41 @@ contract NDF is IERC6123, NDFStorage, SwapToken {
 
     }
 
-    function performSettlement(int256 settlementAmount, string memory settlementData) external {
+    function performSettlement(
+        int256 _settlementAmount,
+        string memory _settlementData
+    ) external {
 
     }
 
-    function afterTransfer(bool success, string memory transactionData) external {
+    function afterTransfer(
+        bool _success,
+        string memory _transactionData
+    ) external {
 
     }
 
-    function requestTradeTermination(string memory tradeId, int256 terminationPayment, string memory terminationTerms) external {
+    function requestTradeTermination(
+        string memory _tradeId,
+        int256 _terminationPayment,
+        string memory _terminationTerms
+    ) external {
 
     }
 
-    function confirmTradeTermination(string memory tradeId, int256 terminationPayment, string memory terminationTerms) external {
+    function confirmTradeTermination(
+        string memory _tradeId,
+        int256 _terminationPayment,
+        string memory _terminationTerms
+    ) external {
 
     }
 
-    function cancelTradeTermination(string memory tradeId, int256 terminationPayment, string memory terminationTerms) external {
+    function cancelTradeTermination(
+        string memory _tradeId,
+        int256 _terminationPayment,
+        string memory _terminationTerms
+    ) external {
 
     }
 
@@ -92,5 +163,13 @@ contract NDF is IERC6123, NDFStorage, SwapToken {
 
     function getTerminationFee() external view returns (uint256) {
         return terminationFee;
+    }
+
+    function getInceptionTime() external view returns (uint256) {
+        return inceptionTime;
+    }
+
+    function getTradeDataHash() external view returns (string memory) {
+        return tradeDataHash;
     }
 }

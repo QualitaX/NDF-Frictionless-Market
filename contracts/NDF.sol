@@ -139,8 +139,11 @@ contract NDF is IERC6123, NDFStorage, SwapToken {
         emit TradeCancelled(inceptor, tradeId);
     }
 
+    /**
+    * @notice We don't implement the `initiateSettlement` function since this is done automatically
+    */
     function initiateSettlement() external {
-
+        revert obseleteFunction();
     }
 
     function performSettlement(
@@ -150,26 +153,51 @@ contract NDF is IERC6123, NDFStorage, SwapToken {
 
     }
 
+    /**
+    * @notice We don't implement the `afterTransfer` function since the transfer of the contract
+    *         net present value is transferred in the `performSettlement function`.
+    */
     function afterTransfer(
         bool _success,
         string memory _transactionData
     ) external {
-
+        revert obseleteFunction();
     }
 
+    /**-> NOT CLEAR: Why requesting trade termination after the trade has been settled ? */
     function requestTradeTermination(
         string memory _tradeId,
         int256 _terminationPayment,
         string memory _terminationTerms
-    ) external {
+    ) external override onlyCounterparty onlyWhenSettled onlyBeforeMaturity {
+        if(
+            keccak256(abi.encodePacked(_tradeId)) != keccak256(abi.encodePacked(tradeId))
+        ) revert invalidTrade(_tradeId);
 
+        uint256 terminationHash = uint256(keccak256(
+            abi.encode(
+                _tradeId,
+                "terminate",
+                _terminationPayment,
+                _terminationTerms
+            )
+        ));
+
+        pendingRequests[terminationHash] = msg.sender;
+
+        emit TradeTerminationRequest(msg.sender, tradeID, _terminationPayment, _terminationTerms);
     }
 
     function confirmTradeTermination(
         string memory _tradeId,
         int256 _terminationPayment,
         string memory _terminationTerms
-    ) external {
+    ) external override onlyCounterparty onlyWhenSettled onlyBeforeMaturity {
+        if(
+            keccak256(abi.encodePacked(_tradeId)) != keccak256(abi.encodePacked(tradeId))
+        ) revert invalidTrade(_tradeId);
+
+        
 
     }
 

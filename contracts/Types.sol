@@ -40,4 +40,9 @@ abstract contract Types {
         Terminated,
         Matured
     }
+
+    enum SettlementType {
+        Cash,
+        Physical
+    }
 }

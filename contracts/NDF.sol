@@ -7,6 +7,26 @@ import "./assets/SwapToken.sol";
 import "./NDFStorage.sol";
 
 contract NDF is IERC6123, NDFStorage, SwapToken {
+    constructor(
+        string memory _tradeId,
+        Types.IRS memory _irs,
+        address _treasury,
+        uint256 _initialMargin,
+        uint256 _maintenanceMargin,
+        uint256 _terminationFee,
+        uint256 _confirmationTime,
+        Types.SettlementType _settlementType
+    ) SwapToken(_irs.settlementCurrency) {
+        irs = _irs;
+        treasury = _treasury;
+        tradeId = _tradeId;
+        initialMargin = _initialMargin;
+        maintenanceMargin = _maintenanceMargin;
+        terminationFee = _terminationFee;
+        confirmationTime = _confirmationTime;
+        settlementType = _settlementType;
+    }
+
     function inceptTrade(
         address _withParty,
         string memory _tradeData,
@@ -185,9 +205,10 @@ contract NDF is IERC6123, NDFStorage, SwapToken {
 
         pendingRequests[terminationHash] = msg.sender;
 
-        emit TradeTerminationRequest(msg.sender, tradeID, _terminationPayment, _terminationTerms);
+        emit TradeTerminationRequest(msg.sender, _tradeId, _terminationPayment, _terminationTerms);
     }
 
+    ///////========> COMPLETE THE PAYMENT LOGIC WHEN THE TREASURY CONTRACT IS AVAILABLE <========////////
     function confirmTradeTermination(
         string memory _tradeId,
         int256 _terminationPayment,
@@ -197,16 +218,64 @@ contract NDF is IERC6123, NDFStorage, SwapToken {
             keccak256(abi.encodePacked(_tradeId)) != keccak256(abi.encodePacked(tradeId))
         ) revert invalidTrade(_tradeId);
 
+        uint256 terminationHash = uint256(keccak256(
+            abi.encode(
+                _tradeId,
+                "terminate",
+                _terminationPayment,
+                _terminationTerms
+            )
+        ));
+
+        address requester = pendingRequests[terminationHash];
+        if (requester == otherParty()) revert InvalidPartyAddress(requester);
+
+        delete pendingRequests[terminationHash];
+        tradeState = Types.TradeState.Terminated;
+
+        // Transfer the termination payment to the caller
+        uint256 scale = _getPaymentTokenDecimalScale();
+        uint256 terminationPayment = uint256(_terminationPayment) * scale;
         
 
+        emit TradeTerminated(requester, _tradeId, _terminationPayment, _terminationTerms);
     }
 
     function cancelTradeTermination(
         string memory _tradeId,
         int256 _terminationPayment,
         string memory _terminationTerms
-    ) external {
+    ) external override onlyWhenSettled onlyBeforeMaturity {
+        uint256 terminationHash = uint256(keccak256(
+            abi.encode(
+                _tradeId,
+                "terminate",
+                _terminationPayment,
+                _terminationTerms
+            )
+        ));
 
+        address requester = pendingRequests[terminationHash];
+        if (pendingRequests[terminationHash] != msg.sender) revert InvalidAddressOrTradeData(msg.sender, terminationHash);
+
+        delete pendingRequests[terminationHash];
+        tradeState = Types.TradeState.Settled;    // NOT CLEAR: Should it be `Settled` or `Active`?
+
+        emit TradeTerminationCancelled(requester, _tradeId, _terminationPayment, _terminationTerms);
+    }
+
+    /**
+    * @notice This function is used to evaluate the margin requirements
+    *         and update the margin balances of the parties involved.
+    */
+    function evaluateMargin() external onlyWhenTradeConfirmed onlyBeforeMaturity {
+        require(
+            msg.sender == marginEvaluationUpkeepAddress,
+            "NDF: Only the margin evaluation upkeep can call this function"
+        );
+
+        uint256 notional = irs.notionalAmount;
+        uint256 principalScale = _getPaymentTokenDecimalScale();
     }
 
     function getIRS() external view returns (Types.IRS memory) {
@@ -251,6 +320,14 @@ contract NDF is IERC6123, NDFStorage, SwapToken {
 
     function getTradeDataHash() external view returns (string memory) {
         return tradeDataHash;
+    }
+
+    function getSettlementType() external view returns (Types.SettlementType) {
+        return settlementType;
+    }
+
+    function getConfirmationTime() external view returns (uint256) {
+        return confirmationTime;
     }
 
     function otherParty() internal view returns(address) {

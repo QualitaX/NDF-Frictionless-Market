@@ -25,7 +25,7 @@ abstract contract NDFStorage {
     Types.SettlementType internal settlementType; // Cash or Physical
 
     address internal frictionlessTreasury;
-    address frictionlessFXSwapAddress;
+    address internal frictionlessFXSwapAddress;
     address internal marginEvaluationUpkeepAddress;
     address internal settlementUpkeepAddress;
     string internal tradeId;

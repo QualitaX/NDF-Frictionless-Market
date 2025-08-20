@@ -10,7 +10,7 @@ contract NDF is IERC6123, NDFStorage, SwapToken {
     constructor(
         string memory _tradeId,
         Types.IRS memory _irs,
-        address _treasury,
+        address _frictionlessTreasury,
         uint256 _initialMargin,
         uint256 _maintenanceMargin,
         uint256 _terminationFee,
@@ -18,7 +18,7 @@ contract NDF is IERC6123, NDFStorage, SwapToken {
         Types.SettlementType _settlementType
     ) SwapToken(_irs.settlementCurrency) {
         irs = _irs;
-        treasury = _treasury;
+        frictionlessTreasury = _frictionlessTreasury;
         tradeId = _tradeId;
         initialMargin = _initialMargin;
         maintenanceMargin = _maintenanceMargin;
@@ -72,7 +72,7 @@ contract NDF is IERC6123, NDFStorage, SwapToken {
         if (upfrontPayment != marginAndFee) revert InvalidUpfrontPayment(upfrontPayment, marginAndFee);
 
         require(
-            IToken(irs.settlementCurrency).transferFrom(inceptor, treasury, upfrontPayment),
+            IToken(irs.settlementCurrency).transferFrom(inceptor, frictionlessTreasury, upfrontPayment),
             "NDF: Transfer of margin and fees failed"
         );
 
@@ -125,7 +125,7 @@ contract NDF is IERC6123, NDFStorage, SwapToken {
         if (upfrontPayment != marginAndFee) revert InvalidUpfrontPayment(upfrontPayment, marginAndFee);
 
         require(
-            IToken(irs.settlementCurrency).transferFrom(msg.sender, treasury, marginAndFee),
+            IToken(irs.settlementCurrency).transferFrom(msg.sender, frictionlessTreasury, marginAndFee),
             "NDF: Transfer of margin and fees failed"
         );
 
@@ -295,7 +295,7 @@ contract NDF is IERC6123, NDFStorage, SwapToken {
     }
 
     function getTreasury() external view returns (address) {
-        return treasury;
+        return frictionlessTreasury;
     }
 
     function getTradeId() external view returns (string memory) {
@@ -328,6 +328,56 @@ contract NDF is IERC6123, NDFStorage, SwapToken {
 
     function getConfirmationTime() external view returns (uint256) {
         return confirmationTime;
+    }
+
+    function getMarginEvaluationUpkeepAddress() external view returns (address) {
+        return marginEvaluationUpkeepAddress;
+    }
+
+    function getSettlementUpkeepAddress() external view returns (address) {
+        return settlementUpkeepAddress;
+    }
+
+    function getFrictionlessTreasury() external view returns (address) {
+        return frictionlessTreasury;
+    }
+
+    function getFrictionlessFXSwapAddress() external view returns (address) {
+        return frictionlessFXSwapAddress;
+    }
+
+    /**
+    * @dev Calculates the FX swap amount for Party A based on the notional amount.
+    * This is used to determine the amount of settlement currency that Party A will swap
+    * in the FX swap transaction.
+    * @return fxSwapAmount amount that must be paid by Party A to Party B.
+    */
+    function calculatePartyAFXSwapAmount() public view returns (uint256 fxSwapAmount) {
+        uint256 scale = _getPaymentTokenDecimalScale();
+        uint256 notional = irs.notionalAmount * scale;
+        
+        // Call the external function to get the FX swap rate
+        /**
+        uint256 fxSwapRate = IFrictionlessFXSwap(frictionlessFXSwapAddress).getFXSwapRate(
+            irs.partyACollateralCurrency,
+            irs.partyBCollateralCurrency
+        );
+        if (fxSwapRate == 0) revert InvalidFXSwapRate();
+        // Calculate the FX swap amount based on the notional amount and the FX swap rate
+        fxSwapAmount = (notional * fxSwapRate) / 10**18;
+        */
+    }
+
+    /**
+    * @dev Calculates the FX swap amount for Party B based on the notional amount.
+    * This is used to determine the amount of settlement currency that Party B will swap
+    * in the FX swap transaction.
+    * @return fxSwapAmount amount that must be paid by Party A to Party A.
+    */
+    function calculatePartyBFXSwapAmount() public view returns (uint256 fxSwapAmount) {
+        uint256 scale = _getPaymentTokenDecimalScale();
+        uint256 notional = irs.notionalAmount * scale;
+        uint256 fxSwapAmount = notional / 2; // Assuming a 50% split for FX swap
     }
 
     function otherParty() internal view returns(address) {

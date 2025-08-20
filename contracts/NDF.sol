@@ -359,8 +359,8 @@ contract NDF is IERC6123, NDFStorage, SwapToken {
         // Call the external function to get the FX swap rate
         /**
         uint256 fxSwapRate = IFrictionlessFXSwap(frictionlessFXSwapAddress).getFXSwapRate(
-            irs.partyACollateralCurrency,
-            irs.partyBCollateralCurrency
+            irs.settlementCurrency,
+            irs.partyACollateralCurrency
         );
         if (fxSwapRate == 0) revert InvalidFXSwapRate();
         // Calculate the FX swap amount based on the notional amount and the FX swap rate
@@ -377,15 +377,25 @@ contract NDF is IERC6123, NDFStorage, SwapToken {
     function calculatePartyBFXSwapAmount() public view returns (uint256 fxSwapAmount) {
         uint256 scale = _getPaymentTokenDecimalScale();
         uint256 notional = irs.notionalAmount * scale;
-        uint256 fxSwapAmount = notional / 2; // Assuming a 50% split for FX swap
+        
+        // Call the external function to get the FX swap rate
+        /**
+        uint256 fxSwapRate = IFrictionlessFXSwap(frictionlessFXSwapAddress).getFXSwapRate(
+            irs.settlementCurrency,
+            irs.partyBCollateralCurrency
+        );
+        if (fxSwapRate == 0) revert InvalidFXSwapRate();
+        // Calculate the FX swap amount based on the notional amount and the FX swap rate
+        fxSwapAmount = (notional * fxSwapRate) / 10**18;
+        */
     }
 
     function otherParty() internal view returns(address) {
-        return msg.sender == irs.fixedRatePayer ? irs.floatingRatePayer : irs.fixedRatePayer;
+        return msg.sender == irs.partyA ? irs.partyB : irs.partyA;
     }
 
     function otherParty(address _account) internal view returns(address) {
-        return _account == irs.fixedRatePayer ? irs.floatingRatePayer : irs.fixedRatePayer;
+        return _account == irs.partyA ? irs.partyB : irs.partyA;
     }
 
     /**

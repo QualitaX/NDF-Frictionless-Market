@@ -33,7 +33,7 @@ contract NDF is IERC6123, NDFStorage, SwapToken {
         int _position,
         int256 _paymentAmount,
         string memory _initialSettlementData
-    ) external override onlyCounterparty onlyWhenTradeIncepted onlyBeforeMaturity returns (string memory) {
+    ) external override onlyCounterparty onlyWhenTradeInactive onlyBeforeMaturity returns (string memory) {
         address inceptor = msg.sender;
 
         if(_withParty == address(0)) revert InvalidPartyAddress(_withParty);

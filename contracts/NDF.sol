@@ -278,21 +278,40 @@ contract NDF is IERC6123, NDFStorage, SwapToken {
             "NDF: Only the margin evaluation upkeep can call this function"
         );
 
-        uint256 partyASwapAmount = _calculatePartyFXSwapAmount(irs.partyACollateralCurrency);
-        uint256 partyBSwapAmount = _calculatePartyFXSwapAmount(irs.partyBCollateralCurrency);
+        uint256 partyASwapAmount = _updateSpotRate(irs.partyACollateralCurrency);
+        uint256 partyBSwapAmount = _updateSpotRate(irs.partyBCollateralCurrency);
 
         if(partyASwapAmount == partyBSwapAmount) {
-            // No margin call required
-            emit MarginEvaluated(partyA, partyB, 0, partyASwapAmount, partyBSwapAmount, block.timestamp);
+            emit MarginCall(partyA, partyB, 0, partyASwapAmount, partyBSwapAmount, block.timestamp);
         } else if(partyASwapAmount > partyBSwapAmount) {
+            uint256 currentMargin = margin[irs.partyA];
             uint256 netAmount = partyASwapAmount - partyBSwapAmount;
-            margin[irs.partyA] += netAmount;
-            emit MarginEvaluated(irs.partyA, irs.partyB, netAmount, partyASwapAmount, partyBSwapAmount, block.timestamp);
+            margin[irs.partyA] = currentMargin + netAmount;
+
+            emit MarginCall(irs.partyA, irs.partyB, netAmount, partyASwapAmount, partyBSwapAmount, block.timestamp);
         } else {
             uint256 netAmount = partyBSwapAmount - partyASwapAmount;
-            margin[irs.partyB] += netAmount;
-            emit MarginEvaluated(irs.partyB, irs.partyA, netAmount, partyBSwapAmount, partyASwapAmount, block.timestamp);
+            uint256 currentMargin = margin[irs.partyB];
+            margin[irs.partyB] = currentMargin + netAmount;
+
+            emit MarginCall(irs.partyB, irs.partyA, netAmount, partyBSwapAmount, partyASwapAmount, block.timestamp);
         }
+    }
+
+    /**
+    * @notice This function is used to top up the margin balance of a party.
+    *         The party can call this function to add funds to their margin account.
+    */
+    function receiveTopUp() external {
+
+    }
+
+    /**
+    * @notice This function is used to settle the trade at maturity.
+    *         It can be called by the settlement automated contract.
+    */
+    function settle() external {
+
     }
 
     /**
@@ -301,7 +320,7 @@ contract NDF is IERC6123, NDFStorage, SwapToken {
     * in the FX swap transaction.
     * @return fxSwapAmount amount that must be paid by the given Party to the other Party.
     */
-    function _calculatePartyFXSwapAmount(address _partyCollateralCurrency) private view returns (uint256 fxSwapAmount) {
+    function _updateSpotRate(address _partyCollateralCurrency) private view returns (uint256 fxSwapAmount) {
         uint256 scale = _getPaymentTokenDecimalScale();
         uint256 notional = irs.notionalAmount * scale;
         
@@ -317,37 +336,6 @@ contract NDF is IERC6123, NDFStorage, SwapToken {
         */
 
         if(_partyCollateralCurrency == settlementCurrency) {
-            fxSwapAmount = notional;
-        } else {
-            int256 latestRate;
-            (,latestRate,,,) = exchangePriceFeed.latestRoundData();
-            uint256 exchangeRate = uint256(latestRate);
-            fxSwapAmount = (notional * exchangeRate)/ (10 ** exchangePriceDecimals);
-        }
-    }
-
-    /**
-    * @dev Calculates the FX swap amount for Party B based on the notional amount.
-    * This is used to determine the amount of settlement currency that Party B will swap
-    * in the FX swap transaction.
-    * @return fxSwapAmount amount that must be paid by Party A to Party A.
-    */
-    function calculatePartyBFXSwapAmount() public view returns (uint256 fxSwapAmount) {
-        uint256 scale = _getPaymentTokenDecimalScale();
-        uint256 notional = irs.notionalAmount * scale;
-        
-        // Call the external function to get the FX swap rate
-        /**
-        uint256 fxSwapRate = IFrictionlessFXSwap(frictionlessFXSwapAddress).getFXSwapRate(
-            irs.settlementCurrency,
-            irs.partyBCollateralCurrency
-        );
-        if (fxSwapRate == 0) revert InvalidFXSwapRate();
-        // Calculate the FX swap amount based on the notional amount and the FX swap rate
-        fxSwapAmount = (notional * fxSwapRate) / 10**18;
-        */
-
-        if(partyACollateralCurrency == settlementCurrency) {
             fxSwapAmount = notional;
         } else {
             int256 latestRate;
@@ -423,6 +411,18 @@ contract NDF is IERC6123, NDFStorage, SwapToken {
 
     function getFrictionlessFXSwapAddress() external view returns (address) {
         return frictionlessFXSwapAddress;
+    }
+
+    function getExchangePriceFeed() external view returns (address) {
+        return address(exchangePriceFeed);
+    }
+
+    function getCurrentExchangeRate() external view returns (uint256) {
+        return currentExchangeRate;
+    }
+
+    function getExchangePriceDecimals() external view returns (uint256) {
+        return exchangePriceDecimals;
     }
 
     function otherParty() internal view returns(address) {

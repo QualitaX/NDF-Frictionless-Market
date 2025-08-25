@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.19;
 
-import "./TREX/interfaces/IToken.sol";
+import "./ERC3643/interfaces/IToken.sol";
 import "../Types.sol";
 
 /**

@@ -10,13 +10,14 @@ abstract contract NDFStorage {
     mapping(address => Types.MarginRequirement) internal marginRequirements;
 
     error obseleteFunction();
+    error NoMarginNeeded();
     error InvalidPosition(int256 position);
     error InvalidPartyAddress(address party);
     error cannotInceptWithYourself(address _caller, address _withParty);
     error InvalidUpfrontPayment(uint256 paymentAmount, uint256 requiredAmount);
     error InvalidAddressOrTradeData(address _inceptor, uint256 _dataHash);
 
-    event MarginEvaluated(
+    event MarginCall(
         address indexed payer,
         address indexed payee,
         uint256 netAmount,
@@ -24,6 +25,7 @@ abstract contract NDFStorage {
         uint256 payeeMargin,
         uint256 timestamp
     );
+    event MarginTopUp(address indexed party, uint256 topUpAmount, uint256 timestamp);
 
     uint256 internal initialMargin;
     uint256 internal maintenanceMargin;

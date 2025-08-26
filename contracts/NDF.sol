@@ -302,8 +302,17 @@ contract NDF is IERC6123, NDFStorage, SwapToken {
     * @notice This function is used to top up the margin balance of a party.
     *         The party can call this function to add funds to their margin account.
     */
-    function receiveTopUp() external {
+    function topUpMargin() external {
+        uint256 topUpAmount = margin[msg.sender];
+        if(topUpAmount == 0) revert NoMarginNeeded();
 
+        margin[msg.sender] = 0;
+        require(
+            IToken(irs.settlementCurrency).transferFrom(msg.sender, frictionlessTreasury, topUpAmount),
+            "NDF: Transfer of top-up amount failed"
+        );
+
+        emit MarginTopUp(msg.sender, topUpAmount, block.timestamp);
     }
 
     /**

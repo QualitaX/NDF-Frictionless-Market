@@ -5,12 +5,13 @@ import "@chainlink/contracts/src/v0.8/shared/interfaces/AggregatorV3Interface.so
 import "./Types.sol";
 
 abstract contract NDFStorage {
-    mapping(address => uint256) internal margin;
+    mapping(address => Types.Margin) internal margin;
     mapping(uint256 => address) internal pendingRequests;
     mapping(address => Types.MarginRequirement) internal marginRequirements;
 
     error obseleteFunction();
     error NoMarginNeeded();
+    error InvalidAddress(address addr);
     error InvalidPosition(int256 position);
     error InvalidPartyAddress(address party);
     error cannotInceptWithYourself(address _caller, address _withParty);
@@ -47,4 +48,6 @@ abstract contract NDFStorage {
     AggregatorV3Interface internal exchangePriceFeed;
     uint256 internal currentExchangeRate;
     uint256 internal exchangePriceDecimals;
+
+    address public ratesContractAddress;
 }

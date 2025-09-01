@@ -5,6 +5,7 @@ import "@openzeppelin/contracts/utils/Strings.sol";
 import "./interfaces/IERC6123.sol";
 import "./assets/SwapToken.sol";
 import "./NDFStorage.sol";
+import "./test/IRates.sol";
 
 contract NDF is IERC6123, NDFStorage, SwapToken {
     constructor(
@@ -16,6 +17,7 @@ contract NDF is IERC6123, NDFStorage, SwapToken {
         uint256 _terminationFee,
         uint256 _confirmationTime,
         Types.SettlementType _settlementType,
+        address _ratesContractAddress,
         address _exchangePriceFeedAddress,
         uint256 exchangePriceDecimals
     ) SwapToken(_irs.settlementCurrency) {
@@ -27,6 +29,7 @@ contract NDF is IERC6123, NDFStorage, SwapToken {
         terminationFee = _terminationFee;
         confirmationTime = _confirmationTime;
         settlementType = _settlementType;
+        ratesContractAddress = _ratesContractAddress;
         exchangePriceDecimals = exchangePriceDecimals;
         exchangePriceFeed = AggregatorV3Interface(_exchangePriceFeedAddress);
     }
@@ -76,7 +79,7 @@ contract NDF is IERC6123, NDFStorage, SwapToken {
         if (upfrontPayment != marginAndFee) revert InvalidUpfrontPayment(upfrontPayment, marginAndFee);
 
         require(
-            IToken(irs.settlementCurrency).transferFrom(inceptor, frictionlessTreasury, upfrontPayment),
+            IToken(irs.settlementCurrency).transferFrom(inceptor, address(this), upfrontPayment),
             "NDF: Transfer of margin and fees failed"
         );
 
@@ -129,7 +132,7 @@ contract NDF is IERC6123, NDFStorage, SwapToken {
         if (upfrontPayment != marginAndFee) revert InvalidUpfrontPayment(upfrontPayment, marginAndFee);
 
         require(
-            IToken(irs.settlementCurrency).transferFrom(msg.sender, frictionlessTreasury, marginAndFee),
+            IToken(irs.settlementCurrency).transferFrom(msg.sender, address(this), marginAndFee),
             "NDF: Transfer of margin and fees failed"
         );
 
@@ -174,7 +177,8 @@ contract NDF is IERC6123, NDFStorage, SwapToken {
         int256 _settlementAmount,
         string memory _settlementData
     ) external {
-
+        tradeState = Types.TradeState.Matured;
+        emit SettlementEvaluated(msg.sender, _settlementAmount, _settlementData);
     }
 
     /**
@@ -232,15 +236,19 @@ contract NDF is IERC6123, NDFStorage, SwapToken {
         ));
 
         address requester = pendingRequests[terminationHash];
-        if (requester == otherParty()) revert InvalidPartyAddress(requester);
+        if (requester == msg.sender) revert InvalidPartyAddress(requester);
 
         delete pendingRequests[terminationHash];
         tradeState = Types.TradeState.Terminated;
 
         // Transfer the termination payment to the caller
+        uint256 terminationFees = marginRequirements[requester].terminationFee;
         uint256 scale = _getPaymentTokenDecimalScale();
-        uint256 terminationPayment = uint256(_terminationPayment) * scale;
-        
+        uint256 termsinationAmount = terminationFees * scale;
+        require(
+            IToken(irs.settlementCurrency).transfer(msg.sender, termsinationAmount),
+            "NDF: Transfer of termination amount failed"
+        );
 
         emit TradeTerminated(requester, _tradeId, _terminationPayment, _terminationTerms);
     }
@@ -284,15 +292,15 @@ contract NDF is IERC6123, NDFStorage, SwapToken {
         if(partyASwapAmount == partyBSwapAmount) {
             emit MarginCall(partyA, partyB, 0, partyASwapAmount, partyBSwapAmount, block.timestamp);
         } else if(partyASwapAmount > partyBSwapAmount) {
-            uint256 currentMargin = margin[irs.partyA];
+            uint256 currentMargin = margin[irs.partyA].currentMargin;
             uint256 netAmount = partyASwapAmount - partyBSwapAmount;
-            margin[irs.partyA] = currentMargin + netAmount;
+            margin[irs.partyA].currentMargin = currentMargin + netAmount;
 
             emit MarginCall(irs.partyA, irs.partyB, netAmount, partyASwapAmount, partyBSwapAmount, block.timestamp);
         } else {
             uint256 netAmount = partyBSwapAmount - partyASwapAmount;
-            uint256 currentMargin = margin[irs.partyB];
-            margin[irs.partyB] = currentMargin + netAmount;
+            uint256 currentMargin = margin[irs.partyB].currentMargin;
+            margin[irs.partyB].currentMargin = currentMargin + netAmount;
 
             emit MarginCall(irs.partyB, irs.partyA, netAmount, partyBSwapAmount, partyASwapAmount, block.timestamp);
         }
@@ -302,13 +310,14 @@ contract NDF is IERC6123, NDFStorage, SwapToken {
     * @notice This function is used to top up the margin balance of a party.
     *         The party can call this function to add funds to their margin account.
     */
-    function topUpMargin() external {
-        uint256 topUpAmount = margin[msg.sender];
+    function topUpMargin() external onlyCounterparty onlyWhenTradeConfirmed onlyBeforeMaturity {
+        uint256 topUpAmount = margin[msg.sender].currentMargin;
         if(topUpAmount == 0) revert NoMarginNeeded();
 
-        margin[msg.sender] = 0;
+        margin[msg.sender].currentMargin = 0;
+        margin[msg.sender].totalMarginPosted += topUpAmount;
         require(
-            IToken(irs.settlementCurrency).transferFrom(msg.sender, frictionlessTreasury, topUpAmount),
+            IToken(irs.settlementCurrency).transferFrom(msg.sender, address(this), topUpAmount),
             "NDF: Transfer of top-up amount failed"
         );
 
@@ -319,8 +328,24 @@ contract NDF is IERC6123, NDFStorage, SwapToken {
     * @notice This function is used to settle the trade at maturity.
     *         It can be called by the settlement automated contract.
     */
-    function settle() external {
+    function settle() external onlyAfterMaturity {
+        require(
+            msg.sender == settlementUpkeepAddress,
+            "NDF: Only the settlement upkeep can call this function"
+        );
 
+        uint256 partyASwapAmount = _updateSpotRate(irs.partyACollateralCurrency);
+        uint256 partyBSwapAmount = _updateSpotRate(irs.partyBCollateralCurrency);
+    }
+
+    function setFrictionlessFXSwapAddress(address _frictionlessFXSwapAddress) external onlyCounterparty {
+        if(_frictionlessFXSwapAddress == address(0)) revert InvalidAddress(_frictionlessFXSwapAddress);
+        frictionlessFXSwapAddress = _frictionlessFXSwapAddress;
+    }
+
+    function setMarginEvaluationUpkeepAddress(address _marginEvaluationUpkeepAddress) external onlyCounterparty {
+        if(_marginEvaluationUpkeepAddress == address(0)) revert InvalidAddress(_marginEvaluationUpkeepAddress);
+        marginEvaluationUpkeepAddress = _marginEvaluationUpkeepAddress;
     }
 
     /**
@@ -332,25 +357,21 @@ contract NDF is IERC6123, NDFStorage, SwapToken {
     function _updateSpotRate(address _partyCollateralCurrency) private view returns (uint256 fxSwapAmount) {
         uint256 scale = _getPaymentTokenDecimalScale();
         uint256 notional = irs.notionalAmount * scale;
-        
-        // Call the external function to get the FX swap rate
-        /**
-        uint256 fxSwapRate = IFrictionlessFXSwap(frictionlessFXSwapAddress).getFXSwapRate(
-            irs.settlementCurrency,
-            irs.partyACollateralCurrency
-        );
-        if (fxSwapRate == 0) revert InvalidFXSwapRate();
-        // Calculate the FX swap amount based on the notional amount and the FX swap rate
-        fxSwapAmount = (notional * fxSwapRate) / 10**18;
-        */
 
         if(_partyCollateralCurrency == settlementCurrency) {
             fxSwapAmount = notional;
         } else {
+            uint256 exchangeRate = IRates(ratesContractAddress).getRate();
+            uint256 rateDecimals = IRates(ratesContractAddress).decimals();
+            uint256 rateScale = 10 ** rateDecimals;
+            uint256 pricipalDecimals = IToken(irs.settlementCurrency).decimals();
+            fxSwapAmount = (notional * exchangeRate) / rateScale;
+            /** Chainlink Price Feed logic to be implemented
             int256 latestRate;
             (,latestRate,,,) = exchangePriceFeed.latestRoundData();
             uint256 exchangeRate = uint256(latestRate);
             fxSwapAmount = (notional * exchangeRate)/ (10 ** exchangePriceDecimals);
+             */
         }
     }
 

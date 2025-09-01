@@ -29,6 +29,11 @@ abstract contract Types {
         uint256 partyBPaymentAmount;
     }
 
+    struct Margin {
+        uint256 currentMargin;
+        uint256 totalMarginPosted;
+    }
+
     enum TradeState {
         Inactive,
         Incepted,

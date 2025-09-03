@@ -8,7 +8,7 @@ import "../Types.sol";
 * @notice This token contract allows tokenize Interest Rate Swap cashflows.
 *         Approval and Transfer of tokens are allowed only before the IRS contract reaches maturity.
 *         This feature prevents tokens to be traded after the contract has matured.
-*         When tokens are transferred to an account, the ownership (partyA or partyB) is also transferred.
+*         When tokens are transferred to an account, the ownership (longParty or shortParty) is also transferred.
 *         The contract doesn't support partial transfer of tokens. All the balance must be transferred for the transaction to be successful.
 */
 abstract contract SwapToken is IToken {
@@ -205,10 +205,10 @@ abstract contract SwapToken is IToken {
             _balances[to] += amount;
         }
 
-        if(from == irs.partyA) {
-            irs.partyA = to;
-        } else if(from == irs.partyB) {
-            irs.partyB = to;
+        if(from == irs.longParty) {
+            irs.longParty = to;
+        } else if(from == irs.shortParty) {
+            irs.shortParty = to;
         } else {
             revert("invalid from address");
         }

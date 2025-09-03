@@ -3,12 +3,12 @@ pragma solidity ^0.8.19;
 
 abstract contract Types {
     struct IRS {
-        address partyA;
-        address partyB;
+        address longParty;
+        address shortParty;
         address partyACollateralCurrency;
         address partyBCollateralCurrency;
         address settlementCurrency;
-        int256 spread;
+        int256 contractRate;
         uint256 notionalAmount;
         uint256 startDate;
         uint256 maturityDate;
@@ -19,7 +19,7 @@ abstract contract Types {
         uint256 terminationFee;
     }
     
-    struct IRSReceipt {
+    struct Receipt {
         address from;
         address to;
         uint256 netAmount;

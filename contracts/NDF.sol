@@ -6,6 +6,7 @@ import "./interfaces/IERC6123.sol";
 import "./assets/SwapToken.sol";
 import "./NDFStorage.sol";
 import "./test/IRates.sol";
+import "./assets/ERC3643/interfaces/Frictionless/IFrictionlessFXSwap.sol";
 
 contract NDF is IERC6123, NDFStorage, SwapToken {
     constructor(
@@ -45,10 +46,10 @@ contract NDF is IERC6123, NDFStorage, SwapToken {
 
         if(_withParty == address(0)) revert InvalidPartyAddress(_withParty);
         if(inceptor == _withParty) revert cannotInceptWithYourself(inceptor, _withParty);
-        if(_withParty != irs.partyA || inceptor != irs.partyB) revert InvalidPartyAddress(_withParty);
+        if(_withParty != irs.longParty || inceptor != irs.shortParty) revert InvalidPartyAddress(_withParty);
         if(_position != 1 || _position != -1) revert InvalidPosition(_position);
-        if(_position == 1) require(inceptor == irs.partyA, "NDF: Inceptor must be party A");
-        if(_position == -1) require(inceptor == irs.partyB, "NDF: Inceptor must be party B");
+        if(_position == 1) require(inceptor == irs.longParty, "NDF: Inceptor must be party A");
+        if(_position == -1) require(inceptor == irs.shortParty, "NDF: Inceptor must be party B");
 
         tradeState = Types.TradeState.Incepted;
 
@@ -178,6 +179,12 @@ contract NDF is IERC6123, NDFStorage, SwapToken {
         string memory _settlementData
     ) external {
         tradeState = Types.TradeState.Matured;
+
+        require(
+            IToken(irs.settlementCurrency).transfer(irs.longParty, netSettlementAmount),
+            "NDF: Transfer to party A failed"
+        );
+
         emit SettlementEvaluated(msg.sender, _settlementAmount, _settlementData);
     }
 
@@ -245,6 +252,7 @@ contract NDF is IERC6123, NDFStorage, SwapToken {
         uint256 terminationFees = marginRequirements[requester].terminationFee;
         uint256 scale = _getPaymentTokenDecimalScale();
         uint256 termsinationAmount = terminationFees * scale;
+        marginRequirements[requester].terminationFee = 0;
         require(
             IToken(irs.settlementCurrency).transfer(msg.sender, termsinationAmount),
             "NDF: Transfer of termination amount failed"
@@ -290,19 +298,19 @@ contract NDF is IERC6123, NDFStorage, SwapToken {
         uint256 partyBSwapAmount = _updateSpotRate(irs.partyBCollateralCurrency);
 
         if(partyASwapAmount == partyBSwapAmount) {
-            emit MarginCall(partyA, partyB, 0, partyASwapAmount, partyBSwapAmount, block.timestamp);
+            emit MarginCall(longParty, shortParty, 0, partyASwapAmount, partyBSwapAmount, block.timestamp);
         } else if(partyASwapAmount > partyBSwapAmount) {
-            uint256 currentMargin = margin[irs.partyA].currentMargin;
+            uint256 currentMargin = margin[irs.longParty].currentMargin;
             uint256 netAmount = partyASwapAmount - partyBSwapAmount;
-            margin[irs.partyA].currentMargin = currentMargin + netAmount;
+            margin[irs.longParty].currentMargin = currentMargin + netAmount;
 
-            emit MarginCall(irs.partyA, irs.partyB, netAmount, partyASwapAmount, partyBSwapAmount, block.timestamp);
+            emit MarginCall(irs.longParty, irs.shortParty, netAmount, partyASwapAmount, partyBSwapAmount, block.timestamp);
         } else {
             uint256 netAmount = partyBSwapAmount - partyASwapAmount;
-            uint256 currentMargin = margin[irs.partyB].currentMargin;
-            margin[irs.partyB].currentMargin = currentMargin + netAmount;
+            uint256 currentMargin = margin[irs.shortParty].currentMargin;
+            margin[irs.shortParty].currentMargin = currentMargin + netAmount;
 
-            emit MarginCall(irs.partyB, irs.partyA, netAmount, partyBSwapAmount, partyASwapAmount, block.timestamp);
+            emit MarginCall(irs.shortParty, irs.longParty, netAmount, partyBSwapAmount, partyASwapAmount, block.timestamp);
         }
     }
 
@@ -336,6 +344,29 @@ contract NDF is IERC6123, NDFStorage, SwapToken {
 
         uint256 partyASwapAmount = _updateSpotRate(irs.partyACollateralCurrency);
         uint256 partyBSwapAmount = _updateSpotRate(irs.partyBCollateralCurrency);
+        uint256 netSettlementAmount;
+
+        if(partyASwapAmount == partyBSwapAmount) {
+            tradeState = Types.TradeState.Settled;
+            _generateSettlementReceipt(0, partyASwapAmount, partyBSwapAmount);
+            return;
+        } else if(partyASwapAmount > partyBSwapAmount) {
+            netSettlementAmount = partyASwapAmount - partyBSwapAmount;
+            payerParty = irs.longParty;
+            _generateSettlementReceipt(netSettlementAmount, partyASwapAmount, partyBSwapAmount);
+
+            uint256 totalMargin = margin[payerParty].totalMarginPosted;
+            margin[payerParty].totalMarginPosted = totalMargin - netSettlementAmount;
+            performSettlement(int256(netSettlementAmount), tradeId);
+        } else if(partyBSwapAmount > partyASwapAmount) {
+            netSettlementAmount = partyBSwapAmount - partyASwapAmount;
+            payerParty = irs.shortParty;
+            _generateSettlementReceipt(netSettlementAmount, partyASwapAmount, partyBSwapAmount);
+
+            uint256 totalMargin = margin[payerParty].totalMarginPosted;
+            margin[payerParty].totalMarginPosted = totalMargin - netSettlementAmount;
+            performSettlement(int256(netSettlementAmount), tradeId);
+        }
     }
 
     function setFrictionlessFXSwapAddress(address _frictionlessFXSwapAddress) external onlyCounterparty {
@@ -358,14 +389,22 @@ contract NDF is IERC6123, NDFStorage, SwapToken {
         uint256 scale = _getPaymentTokenDecimalScale();
         uint256 notional = irs.notionalAmount * scale;
 
-        if(_partyCollateralCurrency == settlementCurrency) {
+        if(_partyCollateralCurrency == irs.settlementCurrency) {
             fxSwapAmount = notional;
         } else {
             uint256 exchangeRate = IRates(ratesContractAddress).getRate();
             uint256 rateDecimals = IRates(ratesContractAddress).decimals();
             uint256 rateScale = 10 ** rateDecimals;
-            uint256 pricipalDecimals = IToken(irs.settlementCurrency).decimals();
             fxSwapAmount = (notional * exchangeRate) / rateScale;
+
+            IFrictionlessFXSwap(frictionlessFXSwapAddress).swapTokens(
+                _partyCollateralCurrency,
+                irs.settlementCurrency,
+                payerParty,
+                address(this),
+                notional,
+                exchangeRate
+            );
             /** Chainlink Price Feed logic to be implemented
             int256 latestRate;
             (,latestRate,,,) = exchangePriceFeed.latestRoundData();
@@ -373,6 +412,22 @@ contract NDF is IERC6123, NDFStorage, SwapToken {
             fxSwapAmount = (notional * exchangeRate)/ (10 ** exchangePriceDecimals);
              */
         }
+    }
+
+    function _generateSettlementReceipt(
+        uint256 _settlementAmount,
+        uint256 _partyAPaymentAmount,
+        uint256 _partyBPaymentAmount
+    ) internal {
+        receipts.push(Types.Receipt({
+            from: payerParty,
+            to: otherParty(payerParty),
+            netAmount: _settlementAmount,
+            timestamp: block.timestamp,
+            conversionRate: currentExchangeRate,
+            partyAPaymentAmount: _partyAPaymentAmount,
+            partyBPaymentAmount: _partyBPaymentAmount
+        }));
     }
 
     function getIRS() external view returns (Types.IRS memory) {
@@ -455,12 +510,28 @@ contract NDF is IERC6123, NDFStorage, SwapToken {
         return exchangePriceDecimals;
     }
 
+    function getRatesContractAddress() external view returns (address) {
+        return ratesContractAddress;
+    }
+
+    function getPayerParty() external view returns (address) {
+        return payerParty;
+    }
+
+    function getNetSettlementAmount() external view returns (uint256) {
+        return netSettlementAmount;
+    }
+
+    function getReceipts() external view returns (Types.Receipt[] memory) {
+        return receipts;
+    }
+
     function otherParty() internal view returns(address) {
-        return msg.sender == irs.partyA ? irs.partyB : irs.partyA;
+        return msg.sender == irs.longParty ? irs.shortParty : irs.longParty;
     }
 
     function otherParty(address _account) internal view returns(address) {
-        return _account == irs.partyA ? irs.partyB : irs.partyA;
+        return _account == irs.longParty ? irs.shortParty : irs.longParty;
     }
 
     /**

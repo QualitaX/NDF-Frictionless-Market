@@ -36,6 +36,7 @@ abstract contract NDFStorage {
 
     Types.TradeState internal tradeState;
     Types.SettlementType internal settlementType; // Cash or Physical
+    Types.Receipt[] internal receipts;
 
     address internal frictionlessTreasury;
     address internal frictionlessFXSwapAddress;
@@ -43,11 +44,13 @@ abstract contract NDFStorage {
     address internal settlementUpkeepAddress;
     string internal tradeId;
     string internal tradeDataHash;
+    address internal payerParty;
 
     // Chainlink Price Feed Variables
     AggregatorV3Interface internal exchangePriceFeed;
     uint256 internal currentExchangeRate;
     uint256 internal exchangePriceDecimals;
+    uint256 internal netSettlementAmount; // in settlement currency
 
     address public ratesContractAddress;
 }

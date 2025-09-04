@@ -51,6 +51,7 @@ abstract contract NDFStorage {
     uint256 internal currentExchangeRate;
     uint256 internal exchangePriceDecimals;
     uint256 internal netSettlementAmount; // in settlement currency
+    uint256 internal marginCallAmount; // in settlement currency
 
     address public ratesContractAddress;
 }

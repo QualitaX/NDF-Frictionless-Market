@@ -16,13 +16,13 @@ contract Rates {
 
     uint256 public rateCount;
     uint8 private _ratedecimal = 6;
-    uint256[5] rates = [11648, 11618, 11677, 11713, 11651];
+    int256[5] rates = [int256(11648), int256(11618), int256(11677), int256(11713), int256(11651)];
 
     function decimals() external view returns(uint8) {
         return _ratedecimal;
     }
 
-    function getRate() external returns(uint256) {
+    function getRate() external returns(int256) {
         uint256 index = rateCount;
         rateCount = index + 1;
 

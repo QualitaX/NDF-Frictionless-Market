@@ -5,9 +5,10 @@ abstract contract Types {
     struct IRS {
         address longParty;
         address shortParty;
-        address partyACollateralCurrency;
-        address partyBCollateralCurrency;
-        address settlementCurrency;
+        address collateralCurrency;
+        address baseCurrency;
+        address longPartySettlementCurrency;
+        address shortPartySettlementCurrency;
         int256 contractRate;
         uint256 notionalAmount;
         uint256 startDate;

@@ -294,16 +294,16 @@ contract NDF is IERC6123, NDFStorage, SwapToken {
             "NDF: Only the margin evaluation upkeep can call this function"
         );
 
-        int256 _currentMargin;
-        int256 _contractMargin;
-        (payerParty, marginCallAmount, _currentMargin, _contractMargin) = _calculateMarginCall();
+        int256 _currentForwardMargin;
+        int256 _contractForwardMargin;
+        (payerParty, marginCallAmount, _currentForwardMargin, _contractForwardMargin) = _calculateMarginCall();
         
         if(marginCallAmount == address(0)) {
             return;
         } else {
             uint256 currentMargin = margin[payerParty].currentMargin;
             margin[payerParty].currentMargin = currentMargin + marginCallAmount;
-            emit MarginCall(payerParty, otherParty(payerParty), marginCallAmount, _currentMargin, _contractMargin, block.timestamp);
+            emit MarginCall(payerParty, otherParty(payerParty), marginCallAmount, _currentForwardMargin, _contractForwardMargin, block.timestamp);
         }
     }
 
@@ -318,7 +318,7 @@ contract NDF is IERC6123, NDFStorage, SwapToken {
         margin[msg.sender].currentMargin = 0;
         margin[msg.sender].totalMarginPosted += topUpAmount;
         require(
-            IToken(irs.settlementCurrency).transferFrom(msg.sender, address(this), topUpAmount),
+            IToken(irs.collateralCurrency).transferFrom(msg.sender, address(this), topUpAmount),
             "NDF: Transfer of top-up amount failed"
         );
 

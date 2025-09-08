@@ -1,3 +1,0 @@
-# Frictionless Markets NDF Contracts
-
-

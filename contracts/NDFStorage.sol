@@ -33,6 +33,8 @@ abstract contract NDFStorage {
     uint256 internal terminationFee;
     uint256 internal inceptionTime;
     uint256 internal confirmationTime;
+    int256 internal variationMargin;
+    int256 internal previousMarkToMarket;
 
     Types.TradeState internal tradeState;
     Types.SettlementType internal settlementType; // Cash or Physical

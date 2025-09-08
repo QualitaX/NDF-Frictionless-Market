@@ -373,6 +373,8 @@ contract NDF is IERC6123, NDFStorage, SwapToken {
         marginEvaluationUpkeepAddress = _marginEvaluationUpkeepAddress;
     }
 
+    // The long party buys the base currency and sells the spot currency
+    // The short party sells the base currency and buys the spot currency
     function _settleContract() private view returns (
         uint256 longPartySettlementAmount,
         uint256 shortPartySettlementAmount,
@@ -387,7 +389,23 @@ contract NDF is IERC6123, NDFStorage, SwapToken {
         uint256 notional = irs.notionalAmount * scale;
         int256 _contractForwardAmount = getContractForwardAmount();
 
+        int256 markToMarket;
+        uint256 longAmountInBaseCurrency;
+        uint256 shortAmountInBaseCurrency;
 
+        markToMarket = (currentForwardRate - irs.contractRate) * int256(notional) / int256(rateScale);
+
+
+        if(irs.settlementCurrency == irs.baseCurrency) {
+            longAmountInBaseCurrency = uint256(uint256(currentForwardRate - irs.contractRate) * notional / rateScale);
+            shortAmountInBaseCurrency = _convertInCurrency(longAmountInBaseCurrency, currentForwardRate, irs.spotCurrency);
+        } else if(irs.settlementCurrency == irs.spotCurrency) {
+            shortAmountInBaseCurrency = uint256(uint256(currentForwardRate - irs.contractRate) * notional / rateScale);
+            longAmountInBaseCurrency = _convertInCurrency(shortAmountInBaseCurrency, currentForwardRate, irs.baseCurrency);
+        } else {
+            revert InvalidAddress(irs.settlementCurrency);
+
+        }
     }
 
     function _calculateMarginCall() private view returns (address partyToCall, uint256 marginCallAmount, int256 currentForwardAmount, int256 contractForwardAmount) {
@@ -397,31 +415,31 @@ contract NDF is IERC6123, NDFStorage, SwapToken {
         currentExchangeRate = currentForwardRate;
 
         uint256 notional = irs.notionalAmount * scale;
-        int256 _contractForwardAmount = getContractForwardAmount();
+        contractForwardAmount = getContractForwardAmount();
+        currentForwardAmount = currentForwardRate * int256(notional) / int256(rateScale);
+
+        int256 currentMarkToMarket = (currentForwardAmount - contractForwardAmount) * int256(notional) / int256(rateScale);
+        variationMargin = currentMarkToMarket - previousMarkToMarket;
         
         uint256 marginInBaseCurrency;
-        if(currentForwardRate = irs.contractRate) {
+        if(variationMargin == 0) {
             partyToCall = address(0);
             marginCallAmount = 0;
-            currentForwardAmount = currentForwardRate * int256(notional) / int256(rateScale);
-            contractForwardAmount = _contractForwardAmount;
-        } else if(currentForwardRate > irs.contractRate) {
+        } else if(variationMargin > 0) {
             partyToCall = irs.shortParty;
-            marginInBaseCurrency = uint256(uint256(currentForwardRate - irs.contractRate) * notional / rateScale);
-            marginCallAmount = _convertInCurrency(marginInBaseCurrency, currentForwardRate);
-            currentForwardAmount = currentForwardRate * int256(notional) / int256(rateScale);
-            contractForwardAmount = _contractForwardAmount;
+            marginInBaseCurrency = uint256(variationMargin);
+            marginCallAmount = _convertInCurrency(marginInBaseCurrency, currentForwardRate, irs.collateralCurrency);
         } else {
             partyToCall = irs.longParty;
-            marginInBaseCurrency = uint256(uint256(irs.contractRate - currentForwardRate) * notional / rateScale);
-            marginCallAmount = _convertInCurrency(marginInBaseCurrency, currentForwardRate);
-            currentForwardAmount = currentForwardRate * int256(notional) / int256(rateScale);
-            contractForwardAmount = _contractForwardAmount;
+            marginInBaseCurrency = uint256(-variationMargin);
+            marginCallAmount = _convertInCurrency(marginInBaseCurrency, currentForwardRate, irs.collateralCurrency);
         }
+
+        previousMarkToMarket = currentMarkToMarket;
     }
 
     function _convertInCurrency(uint256 _amount, int256 _exchangeRate, address _currencyAddress) private view returns (uint256) {
-        if(irs.baseCurrency == _currencyAddress) {
+        if(_currencyAddress == irs.baseCurrency) {
             return _amount;
         } else {
             uint256 rateDecimals = IRates(ratesContractAddress).decimals();

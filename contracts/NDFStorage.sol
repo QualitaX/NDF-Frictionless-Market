@@ -27,6 +27,13 @@ abstract contract NDFStorage {
         uint256 timestamp
     );
     event MarginTopUp(address indexed party, uint256 topUpAmount, uint256 timestamp);
+    event TradeSettled(
+        uint256 settlementAmountInBaseCurrency,
+        uint256 settlementAmountInSpotCurrency,
+        int256 exchangeRateAtSettlement,
+        int256 contractRate,
+        uint256 timestamp
+    );
 
     uint256 internal initialMargin;
     uint256 internal maintenanceMargin;

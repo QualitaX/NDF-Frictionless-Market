@@ -21,13 +21,11 @@ abstract contract Types {
     }
     
     struct Receipt {
-        address from;
-        address to;
-        uint256 netAmount;
+        uint256 settlementAmountInBaseCurrency;
+        uint256 settlementAmountInSpotCurrency;
+        int256 exchangeRateAtSettlement;
+        int256 contractRate;
         uint256 timestamp;
-        uint256 conversionRate;
-        uint256 partyAPaymentAmount;
-        uint256 partyBPaymentAmount;
     }
 
     struct Margin {

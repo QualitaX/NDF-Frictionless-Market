@@ -336,31 +336,17 @@ contract NDF is IERC6123, NDFStorage, SwapToken {
             "NDF: Only the settlement upkeep can call this function"
         );
 
+        uint256 rateScale = _scaleTokens(ratesContractAddress);
+        uint256 scale = _scaleTokens(irs.baseCurrency);
+        uint256 notional = irs.notionalAmount * scale;
 
+        uint256 settlementAmountInBaseCurrency = notional;
+        uint256 settlementAmountInSpotCurrency = notional * uint256(currentExchangeRate) / rateScale;
 
-        
+        tradeState = Types.TradeState.Settled;
+        _settleContract(settlementAmountInBaseCurrency, settlementAmountInSpotCurrency);
 
-        if(partyASwapAmount == partyBSwapAmount) {
-            tradeState = Types.TradeState.Settled;
-            _generateSettlementReceipt(0, partyASwapAmount, partyBSwapAmount);
-            return;
-        } else if(partyASwapAmount > partyBSwapAmount) {
-            netSettlementAmount = partyASwapAmount - partyBSwapAmount;
-            payerParty = irs.longParty;
-            _generateSettlementReceipt(netSettlementAmount, partyASwapAmount, partyBSwapAmount);
-
-            uint256 totalMargin = margin[payerParty].totalMarginPosted;
-            margin[payerParty].totalMarginPosted = totalMargin - netSettlementAmount;
-            performSettlement(int256(netSettlementAmount), tradeId);
-        } else if(partyBSwapAmount > partyASwapAmount) {
-            netSettlementAmount = partyBSwapAmount - partyASwapAmount;
-            payerParty = irs.shortParty;
-            _generateSettlementReceipt(netSettlementAmount, partyASwapAmount, partyBSwapAmount);
-
-            uint256 totalMargin = margin[payerParty].totalMarginPosted;
-            margin[payerParty].totalMarginPosted = totalMargin - netSettlementAmount;
-            performSettlement(int256(netSettlementAmount), tradeId);
-        }
+        emit TradeSettled(settlementAmountInBaseCurrency, settlementAmountInSpotCurrency, currentExchangeRate, irs.contractRate, block.timestamp);
     }
 
     function setFrictionlessFXSwapAddress(address _frictionlessFXSwapAddress) external onlyCounterparty {
@@ -371,41 +357,6 @@ contract NDF is IERC6123, NDFStorage, SwapToken {
     function setMarginEvaluationUpkeepAddress(address _marginEvaluationUpkeepAddress) external onlyCounterparty {
         if(_marginEvaluationUpkeepAddress == address(0)) revert InvalidAddress(_marginEvaluationUpkeepAddress);
         marginEvaluationUpkeepAddress = _marginEvaluationUpkeepAddress;
-    }
-
-    // The long party buys the base currency and sells the spot currency
-    // The short party sells the base currency and buys the spot currency
-    function _settleContract() private view returns (
-        uint256 longPartySettlementAmount,
-        uint256 shortPartySettlementAmount,
-        int256 currentForwardAmount,
-        int256 contractForwardAmount
-    ) {
-        int256 currentForwardRate = IRates(ratesContractAddress).getRate();
-        uint256 rateScale = _scaleTokens(ratesContractAddress);
-        uint256 scale = _scaleTokens(irs.baseCurrency);
-        currentExchangeRate = currentForwardRate;
-
-        uint256 notional = irs.notionalAmount * scale;
-        int256 _contractForwardAmount = getContractForwardAmount();
-
-        int256 markToMarket;
-        uint256 longAmountInBaseCurrency;
-        uint256 shortAmountInBaseCurrency;
-
-        markToMarket = (currentForwardRate - irs.contractRate) * int256(notional) / int256(rateScale);
-
-
-        if(irs.settlementCurrency == irs.baseCurrency) {
-            longAmountInBaseCurrency = uint256(uint256(currentForwardRate - irs.contractRate) * notional / rateScale);
-            shortAmountInBaseCurrency = _convertInCurrency(longAmountInBaseCurrency, currentForwardRate, irs.spotCurrency);
-        } else if(irs.settlementCurrency == irs.spotCurrency) {
-            shortAmountInBaseCurrency = uint256(uint256(currentForwardRate - irs.contractRate) * notional / rateScale);
-            longAmountInBaseCurrency = _convertInCurrency(shortAmountInBaseCurrency, currentForwardRate, irs.baseCurrency);
-        } else {
-            revert InvalidAddress(irs.settlementCurrency);
-
-        }
     }
 
     function _calculateMarginCall() private view returns (address partyToCall, uint256 marginCallAmount, int256 currentForwardAmount, int256 contractForwardAmount) {
@@ -438,6 +389,18 @@ contract NDF is IERC6123, NDFStorage, SwapToken {
         previousMarkToMarket = currentMarkToMarket;
     }
 
+    function _settleContract() private view returns (
+        uint256 _settlementAmountInBaseCurrency,
+        uint256 _settlementAmountInSpotCurrency
+    ) {
+        _generateSettlementReceipt(_settlementAmountInBaseCurrency, _settlementAmountInSpotCurrency, currentExchangeRate, irs.contractRate);
+        require(
+            IToken(irs.baseCurrency).transfer(irs.longParty, _settlementAmountInBaseCurrency) &&
+            IToken(irs.spotCurrency).transfer(irs.shortParty, _settlementAmountInSpotCurrency),
+            "NDF: Settlement transfer to parties failed"
+        );
+    }
+
     function _convertInCurrency(uint256 _amount, int256 _exchangeRate, address _currencyAddress) private view returns (uint256) {
         if(_currencyAddress == irs.baseCurrency) {
             return _amount;
@@ -449,18 +412,17 @@ contract NDF is IERC6123, NDFStorage, SwapToken {
     }
 
     function _generateSettlementReceipt(
-        uint256 _settlementAmount,
-        uint256 _partyAPaymentAmount,
-        uint256 _partyBPaymentAmount
-    ) internal {
+        uint256 _amountInBaseCurrency,
+        uint256 _amountInSpotCurrency,
+        int256 _currentExchangeRate,
+        int256 _contractRate
+    ) external {
         receipts.push(Types.Receipt({
-            from: payerParty,
-            to: otherParty(payerParty),
-            netAmount: _settlementAmount,
-            timestamp: block.timestamp,
-            conversionRate: currentExchangeRate,
-            partyAPaymentAmount: _partyAPaymentAmount,
-            partyBPaymentAmount: _partyBPaymentAmount
+            settlementAmountInBaseCurrency: _amountInBaseCurrency,
+            settlementAmountInSpotCurrency: _amountInSpotCurrency,
+            exchangeRateAtSettlement: _currentExchangeRate,
+            contractRate: _contractRate,
+            timestamp: block.timestamp
         }));
     }
 

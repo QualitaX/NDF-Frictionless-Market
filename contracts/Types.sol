@@ -6,9 +6,9 @@ abstract contract Types {
         address longParty;
         address shortParty;
         address collateralCurrency;
+        address settlementCurrency;
         address baseCurrency;
-        address longPartySettlementCurrency;
-        address shortPartySettlementCurrency;
+        address spotCurrency;
         int256 contractRate;
         uint256 notionalAmount;
         uint256 startDate;

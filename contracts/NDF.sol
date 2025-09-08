@@ -23,6 +23,7 @@ contract NDF is IERC6123, NDFStorage, SwapToken {
         uint256 exchangePriceDecimals
     ) SwapToken(_irs.settlementCurrency) {
         irs = _irs;
+        currentExchangeRate = _irs.contractRate;
         frictionlessTreasury = _frictionlessTreasury;
         tradeId = _tradeId;
         initialMargin = _initialMargin;
@@ -298,7 +299,7 @@ contract NDF is IERC6123, NDFStorage, SwapToken {
         int256 _contractForwardMargin;
         (payerParty, marginCallAmount, _currentForwardMargin, _contractForwardMargin) = _calculateMarginCall();
         
-        if(marginCallAmount == address(0)) {
+        if(marginCallAmount == 0) {
             return;
         } else {
             uint256 currentMargin = margin[payerParty].currentMargin;
@@ -335,9 +336,9 @@ contract NDF is IERC6123, NDFStorage, SwapToken {
             "NDF: Only the settlement upkeep can call this function"
         );
 
-        uint256 partyASwapAmount = _updateSpotRate(irs.longPartyCollateralCurrency);
-        uint256 partyBSwapAmount = _updateSpotRate(irs.shortPartyCollateralCurrency);
-        uint256 netSettlementAmount;
+
+
+        
 
         if(partyASwapAmount == partyBSwapAmount) {
             tradeState = Types.TradeState.Settled;
@@ -372,14 +373,33 @@ contract NDF is IERC6123, NDFStorage, SwapToken {
         marginEvaluationUpkeepAddress = _marginEvaluationUpkeepAddress;
     }
 
+    function _settleContract() private view returns (
+        uint256 longPartySettlementAmount,
+        uint256 shortPartySettlementAmount,
+        int256 currentForwardAmount,
+        int256 contractForwardAmount
+    ) {
+        int256 currentForwardRate = IRates(ratesContractAddress).getRate();
+        uint256 rateScale = _scaleTokens(ratesContractAddress);
+        uint256 scale = _scaleTokens(irs.baseCurrency);
+        currentExchangeRate = currentForwardRate;
+
+        uint256 notional = irs.notionalAmount * scale;
+        int256 _contractForwardAmount = getContractForwardAmount();
+
+
+    }
+
     function _calculateMarginCall() private view returns (address partyToCall, uint256 marginCallAmount, int256 currentForwardAmount, int256 contractForwardAmount) {
         int256 currentForwardRate = IRates(ratesContractAddress).getRate();
         uint256 rateScale = _scaleTokens(ratesContractAddress);
         uint256 scale = _scaleTokens(irs.baseCurrency);
+        currentExchangeRate = currentForwardRate;
 
         uint256 notional = irs.notionalAmount * scale;
         int256 _contractForwardAmount = getContractForwardAmount();
         
+        uint256 marginInBaseCurrency;
         if(currentForwardRate = irs.contractRate) {
             partyToCall = address(0);
             marginCallAmount = 0;
@@ -387,56 +407,26 @@ contract NDF is IERC6123, NDFStorage, SwapToken {
             contractForwardAmount = _contractForwardAmount;
         } else if(currentForwardRate > irs.contractRate) {
             partyToCall = irs.shortParty;
-            marginCallAmount = uint256(uint256(currentForwardRate - irs.contractRate) * notional / rateScale);
+            marginInBaseCurrency = uint256(uint256(currentForwardRate - irs.contractRate) * notional / rateScale);
+            marginCallAmount = _convertInCurrency(marginInBaseCurrency, currentForwardRate);
             currentForwardAmount = currentForwardRate * int256(notional) / int256(rateScale);
             contractForwardAmount = _contractForwardAmount;
         } else {
             partyToCall = irs.longParty;
-            marginCallAmount = uint256(uint256(irs.contractRate - currentForwardRate) * notional / rateScale);
+            marginInBaseCurrency = uint256(uint256(irs.contractRate - currentForwardRate) * notional / rateScale);
+            marginCallAmount = _convertInCurrency(marginInBaseCurrency, currentForwardRate);
             currentForwardAmount = currentForwardRate * int256(notional) / int256(rateScale);
             contractForwardAmount = _contractForwardAmount;
         }
     }
 
-    function getContractForwardAmount() public view returns (int256) {
-        uint256 scale = _scaleTokens(irs.baseCurrency);
-        uint256 notional = irs.notionalAmount * scale;
-        uint256 rateScale = _scaleTokens(ratesContractAddress);
-        return irs.contractRate * int256(notional) / int256(rateScale);
-    }
-
-    /**
-    * @dev Calculates the FX swap amount for a given Party based on the notional amount.
-    * This is used to determine the amount of settlement currency that Party will swap
-    * in the FX swap transaction.
-    * @return fxSwapAmount amount that must be paid by the given Party to the other Party.
-    */
-    function _updateSpotRate(address _partyCollateralCurrency) private view returns (uint256 fxSwapAmount) {
-        uint256 scale = _scaleTokens(irs.baseCurrency);
-        uint256 notional = irs.notionalAmount * scale;
-
-        if(_partyCollateralCurrency == irs.settlementCurrency) {
-            fxSwapAmount = notional;
+    function _convertInCurrency(uint256 _amount, int256 _exchangeRate, address _currencyAddress) private view returns (uint256) {
+        if(irs.baseCurrency == _currencyAddress) {
+            return _amount;
         } else {
-            uint256 exchangeRate = IRates(ratesContractAddress).getRate();
             uint256 rateDecimals = IRates(ratesContractAddress).decimals();
             uint256 rateScale = 10 ** rateDecimals;
-            fxSwapAmount = (notional * exchangeRate) / rateScale;
-
-            IFrictionlessFXSwap(frictionlessFXSwapAddress).swapTokens(
-                _partyCollateralCurrency,
-                irs.settlementCurrency,
-                payerParty,
-                address(this),
-                notional,
-                exchangeRate
-            );
-            /** Chainlink Price Feed logic to be implemented
-            int256 latestRate;
-            (,latestRate,,,) = exchangePriceFeed.latestRoundData();
-            uint256 exchangeRate = uint256(latestRate);
-            fxSwapAmount = (notional * exchangeRate)/ (10 ** exchangePriceDecimals);
-             */
+            return (_amount * _exchangeRate) / rateScale;
         }
     }
 
@@ -528,7 +518,7 @@ contract NDF is IERC6123, NDFStorage, SwapToken {
         return address(exchangePriceFeed);
     }
 
-    function getCurrentExchangeRate() external view returns (uint256) {
+    function getLastUsedExchangeRate() external view returns (uint256) {
         return currentExchangeRate;
     }
 
@@ -562,6 +552,13 @@ contract NDF is IERC6123, NDFStorage, SwapToken {
 
     function otherParty(address _account) internal view returns(address) {
         return _account == irs.longParty ? irs.shortParty : irs.longParty;
+    }
+
+    function getContractForwardAmount() public view returns (int256) {
+        uint256 scale = _scaleTokens(irs.baseCurrency);
+        uint256 notional = irs.notionalAmount * scale;
+        uint256 rateScale = _scaleTokens(ratesContractAddress);
+        return irs.contractRate * int256(notional) / int256(rateScale);
     }
 
     function _scaleTokens(address _currency) private view returns (uint256) {

@@ -48,7 +48,7 @@ abstract contract NDFStorage {
 
     // Chainlink Price Feed Variables
     AggregatorV3Interface internal exchangePriceFeed;
-    uint256 internal currentExchangeRate;
+    int256 internal currentExchangeRate;
     uint256 internal exchangePriceDecimals;
     uint256 internal netSettlementAmount; // in settlement currency
     uint256 internal marginCallAmount; // in settlement currency

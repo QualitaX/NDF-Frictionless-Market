@@ -1,3 +1,3 @@
-# Frictionless Markets NDF Contracts
+# Frictionless Markets FX Forward with Delivery Contracts
 
 

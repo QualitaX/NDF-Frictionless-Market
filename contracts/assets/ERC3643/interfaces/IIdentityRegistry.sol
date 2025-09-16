@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.19;
 
-import "@onchain-id/solidity/contracts/interface/IClaimIssuer.sol";
-import "@onchain-id/solidity/contracts/interface/IIdentity.sol";
+import "./IClaimIssuer.sol";
+import "./IIdentity.sol";
 import "./ITrustedIssuersRegistry.sol";
 import "./IClaimTopicsRegistry.sol";
 import "./IIdentityRegistryStorage.sol";

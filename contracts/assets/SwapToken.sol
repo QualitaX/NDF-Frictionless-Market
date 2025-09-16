@@ -20,88 +20,7 @@ abstract contract SwapToken is IToken {
             "IRS contract has reached the Maturity Date"
         );
         _;
-    }
-
-    modifier onlyWhenTradeInactive() {
-        require(
-            tradeState == TradeState.Inactive,
-            "Trade state is not 'Inactive'."
-        ); 
-        _;
-    }
-
-    modifier onlyWhenTradeIncepted() {
-        require(
-            tradeState == TradeState.Incepted,
-            "Trade state is not 'Incepted'."
-        );
-        _;
-    }
-
-    modifier onlyWhenTradeConfirmed() {
-        require(
-            tradeState == TradeState.Confirmed,
-            "Trade state is not 'Confirmed'." 
-        );
-        _;
-    }
-
-    modifier onlyWhenSettled() {
-        require(
-            tradeState == TradeState.Settled,
-            "Trade state is not 'Settled'."
-        );
-        _;
-    }
-
-    modifier onlyWhenValuation() {
-        require(
-            tradeState == TradeState.Valuation,
-            "Trade state is not 'Valuation'."
-        );
-        _;
-    }
-
-    modifier onlyWhenInTermination () {
-        require(
-            tradeState == TradeState.InTermination,
-            "Trade state is not 'InTermination'."
-        );
-        _;
-    }
-
-    modifier onlyWhenInTransfer() {
-        require(
-            tradeState == TradeState.InTransfer,
-            "Trade state is not 'InTransfer'."
-        );
-        _;
-    }
-
-    modifier onlyWhenMatured() {
-        require(
-            tradeState == TradeState.Matured,
-            "Trade state is not 'Matured'."
-        );
-        _;
-    }
-
-    modifier onlyWhenConfirmedOrSettled() {
-        if(tradeState != TradeState.Confirmed) {
-            if(tradeState != TradeState.Settled) {
-                revert stateMustBeConfirmedOrSettled();
-            }
-        }
-        _;
-    }
-
-    modifier onlyWithinConfirmationTime() {
-        require(
-            block.timestamp - inceptingTime <= confirmationTime,
-            "Confimartion time is over"
-        );
-        _;
-    }
+    } 
 
     mapping(address => uint256) internal _balances;
     mapping(address => mapping(address => uint256)) private _allowances;
@@ -115,9 +34,16 @@ abstract contract SwapToken is IToken {
 
     error supplyExceededMaxSupply(uint256 totalSupply_, uint256 maxSupply_);
 
-    constructor(string memory name_, string memory symbol_) {
+    constructor(string memory name_, string memory symbol_, Types.IRS memory _irs) {
+        irs = _irs;
         _name = name_;
         _symbol = symbol_;
+
+        uint256 balance = 1 ether;
+        _maxSupply = 2 * balance;
+
+        mint(irs.longParty, balance);
+        mint(irs.shortParty, balance);
     }
 
     function name() public view virtual returns (string memory) {

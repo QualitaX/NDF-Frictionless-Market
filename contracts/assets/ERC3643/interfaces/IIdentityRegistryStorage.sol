@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.19;
 
-import "@onchain-id/solidity/contracts/interface/IIdentity.sol";
+import "./IIdentity.sol";
 
 interface IIdentityRegistryStorage {
 

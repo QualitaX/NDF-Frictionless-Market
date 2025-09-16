@@ -16,7 +16,8 @@ contract Rates {
 
     uint256 public rateCount;
     uint8 private _ratedecimal = 7;
-    int256[7] rates = [int256(117931), int256(118130), int256(118320), int256(118526), int256(118702), int256(118861), int256(119044)];
+    //int256[7] rates = [int256(117931), int256(118130), int256(118320), int256(118526), int256(118702), int256(118861), int256(119044)];
+    int256[5] rates = [int256(117931), int256(118130), int256(118320), int256(118526), int256(118702)];
 
     function decimals() external view returns(uint8) {
         return _ratedecimal;

@@ -1,0 +1,87 @@
+# ⚠️ EXPERIMENTAL PROOF OF CONCEPT - NOT FOR PRODUCTION USE ⚠️
+
+**CRITICAL WARNING: This codebase is an experimental proof of concept and contains known security vulnerabilities. DO NOT deploy to mainnet or use with real funds.**
+
+## Known Critical Issues
+- **Security vulnerabilities** that could result in complete loss of funds
+- **Incomplete settlement logic** that may not execute properly
+- **Missing access controls** and reentrancy protections
+- **Unaudited smart contracts** with potential logic errors
+
+**This code is intended for research purposes only. The smart contracts have not been audited and contain known vulnerabilities. Use only for testing purposes.**
+
+---
+
+# Overview
+
+This project implements a smart contract for OTC Bilateral Trading of Uncleared FX Forwards with Delivery that removes counterparty credit risk and automates settlement processes. 
+The system enables two parties to exchange fixed and floating interest rate payments based on a notional amount, with automatic margin calls and settlement through Chainlink oracles.
+
+### Key Benefits
+
+- **Trustless OTC Bilateral Trading**: No intermediaries required
+- **Automated Settlement**: Daily margin calls and maturity settlement via Chainlink
+- **Regulatory Compliance**: Identity verification and compliance checks
+- **Risk Management**: Automatic collateral management and termination mechanisms
+- **Audit**: Full on-chain audit trail
+
+# Features
+
+### Core Functionality
+- **Trade Inception & Confirmation**: Secure trade initiation with matching validation
+- **Automated Margin Calls**: Daily collateral adjustments based on rate movements
+- **Settlement Automation**: Chainlink-powered settlement at maturity
+- **Early Termination**: Mutual termination with agreed settlement amounts
+- **Collateral Management**: Dynamic margin requirements and collateral posting
+
+### Compliance & Security
+- **Identity Verification**: ERC-3643 compatible identity registry integration
+- **Access Control**: Role-based permissions with counterparty validation
+- **Pausable Operations**: Emergency controls for risk management
+- **Audit Trail**: Comprehensive event logging for all operations
+
+### Risk Management
+
+- **Pre-funded margin requirements**
+- **Automatic termination on insufficient collateral**
+- **Emergency pause functionality**
+- **Multi-signature controls for critical operations**
+
+### Token Standards
+- **Derivative Contract**: FX Forward Derivative Contract implementation
+- **ERC-7586**: Interest Rate Swap specific functionality
+- **ERC-3643**: Security token compliance for regulated environments
+
+##  Architecture
+
+```
+
+
+```
+
+
+### Contract Components
+
+
+
+
+## Development Status
+
+### ⚠️ Current Limitations
+
+
+
+#### Security Issues
+
+
+## License
+
+This experimental software is provided as-is for educational purposes. See LICENSE file for details.
+
+## Contact
+
+For questions about this proof of concept or collaboration opportunities, please open an issue in this repository.
+
+---
+
+**Remember: This is experimental software. Never use with real funds or deploy to production environments.**

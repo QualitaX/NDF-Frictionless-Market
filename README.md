@@ -57,28 +57,6 @@ The system enables two parties to exchange fixed and floating interest rate paym
 - **ERC-7586**: Interest Rate Swap specific functionality
 - **ERC-3643**: Security token compliance for regulated environments
 
-##  Architecture
-
-```
-
-
-```
-
-
-### Contract Components
-
-
-
-
-## Development Status
-
-### ⚠️ Current Limitations
-
-
-
-#### Security Issues
-
-
 ## License
 
 This experimental software is provided as-is for educational purposes. See LICENSE file for details.
@@ -90,6 +68,7 @@ For questions about this proof of concept or collaboration opportunities, please
 ---
 
 **Remember: This is experimental software. Never use with real funds or deploy to production environments.**
+
 
 
 
